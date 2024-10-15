@@ -5,8 +5,11 @@ struct __attribute__((annotate("reflect"))) test{
     int testname;
     int testname2;
     double testname3;
-    struct test2{
+    struct __attribute__((annotate("reflect"))) test2{
         int testname;
+        struct __attribute__((annotate("reflect"))) test3{
+            int testname;
+        };
     };
     test2 testname4;
 
@@ -51,6 +54,78 @@ return ReflectVar{&c, it->second};
 return ReflectVar{};
 }
 //dynamic reflect--------------------------------
+
+//static reflect--------------------------------
+template<>
+constexpr staticReflectVar staticReflect<test::test2>(test::test2 &c, std::string_view name) {
+constexpr auto keynames = std::array<map, 1>{
+map{"testname", offsetof(test::test2, testname), sizeof(test::test2::testname)},
+};
+for (const auto& keyname : keynames){
+if (keyname.keyname == name){
+return staticReflectVar{&c, keyname.offset, keyname.size};
+}
+}
+return staticReflectVar{};
+}
+//static reflect--------------------------------
+
+
+//dynamic reflect--------------------------------
+template <>
+auto& typeInfo<test::test2>() {
+const static std::unordered_map<std::string_view, typeinfo> typeinfos = {
+{"testname", {offsetof(test::test2, testname), sizeof(test::test2::testname), std::type_index(typeid(test::test2::testname))}},
+};
+return typeinfos;
+}
+template <>
+ReflectVar reflect<test::test2>(test::test2 &c, std::string_view name) {
+auto& typeinfos = typeInfo<test::test2>();
+auto it = typeinfos.find(name);
+if (it != typeinfos.end()){
+return ReflectVar{&c, it->second};
+}
+return ReflectVar{};
+}
+//dynamic reflect--------------------------------
+
+//static reflect--------------------------------
+template<>
+constexpr staticReflectVar staticReflect<test::test2::test3>(test::test2::test3 &c, std::string_view name) {
+constexpr auto keynames = std::array<map, 1>{
+map{"testname", offsetof(test::test2::test3, testname), sizeof(test::test2::test3::testname)},
+};
+for (const auto& keyname : keynames){
+if (keyname.keyname == name){
+return staticReflectVar{&c, keyname.offset, keyname.size};
+}
+}
+return staticReflectVar{};
+}
+//static reflect--------------------------------
+
+
+//dynamic reflect--------------------------------
+template <>
+auto& typeInfo<test::test2::test3>() {
+const static std::unordered_map<std::string_view, typeinfo> typeinfos = {
+{"testname", {offsetof(test::test2::test3, testname), sizeof(test::test2::test3::testname), std::type_index(typeid(test::test2::test3::testname))}},
+};
+return typeinfos;
+}
+template <>
+ReflectVar reflect<test::test2::test3>(test::test2::test3 &c, std::string_view name) {
+auto& typeinfos = typeInfo<test::test2::test3>();
+auto it = typeinfos.find(name);
+if (it != typeinfos.end()){
+return ReflectVar{&c, it->second};
+}
+return ReflectVar{};
+}
+//dynamic reflect--------------------------------
+
+
 
 
 test temp = {1,2};

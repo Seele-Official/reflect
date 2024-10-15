@@ -4,7 +4,12 @@
 #include "clang/Frontend/FrontendAction.h"
 #include "clang/Tooling/Tooling.h"
 #include "clang/Rewrite/Core/Rewriter.h"
-#include <cstddef>
+#include "clang/AST/ASTContext.h"
+#include "clang/AST/ParentMapContext.h"
+#include <clang/AST/ASTTypeTraits.h>
+#include <clang/AST/DeclBase.h>
+#include <clang/Basic/LLVM.h>
+#include <llvm/Support/Casting.h>
 #include <llvm/Support/raw_ostream.h>
 #include <fstream>
 using namespace clang;
@@ -18,7 +23,7 @@ struct fieldinfo {
 
 auto codegen(const CXXRecordDecl *decl) {
 
-    auto name = decl->getName();
+    auto name = decl->getQualifiedNameAsString();
 
     auto fieldinfos = std::vector<fieldinfo>();
 
@@ -32,10 +37,10 @@ auto codegen(const CXXRecordDecl *decl) {
     std::string code;
     code += "\n//static reflect--------------------------------\n";
     code += "template<>\n";
-    code += "constexpr staticReflectVar staticReflect<" + name.str() + ">(" + name.str() + " &c, std::string_view name) {\n";
+    code += "constexpr staticReflectVar staticReflect<" + name + ">(" + name + " &c, std::string_view name) {\n";
     code += "constexpr auto keynames = std::array<map, " + size + ">{\n";
     for (const auto &fieldinfo : fieldinfos) {
-        code += "map{\""+ fieldinfo.name + "\", offsetof(" + name.str() + ", " + fieldinfo.name + "), sizeof(" + fieldinfo.qualifiedName + ")},\n";
+        code += "map{\""+ fieldinfo.name + "\", offsetof(" + name + ", " + fieldinfo.name + "), sizeof(" + fieldinfo.qualifiedName + ")},\n";
     }
     code += "};\n";
     code += "for (const auto& keyname : keynames){\n";
@@ -52,10 +57,10 @@ auto codegen(const CXXRecordDecl *decl) {
 
     code += "//dynamic reflect--------------------------------\n";
     code += "template <>\n";
-    code += "auto& typeInfo<" + name.str() + ">() {\n";
+    code += "auto& typeInfo<" + name + ">() {\n";
     code += "const static std::unordered_map<std::string_view, typeinfo> typeinfos = {\n";
     for (const auto &fieldinfo : fieldinfos) {
-        code += "{\"" + fieldinfo.name + "\", {offsetof(" + name.str() + ", " + fieldinfo.name + "), sizeof(" + fieldinfo.qualifiedName + "), std::type_index(typeid(" + fieldinfo.qualifiedName + "))}},\n";
+        code += "{\"" + fieldinfo.name + "\", {offsetof(" + name + ", " + fieldinfo.name + "), sizeof(" + fieldinfo.qualifiedName + "), std::type_index(typeid(" + fieldinfo.qualifiedName + "))}},\n";
     }
     code += "};\n";
     code += "return typeinfos;\n";
@@ -64,8 +69,8 @@ auto codegen(const CXXRecordDecl *decl) {
 
 
     code += "template <>\n";
-    code += "ReflectVar reflect<" + name.str() + ">(" + name.str() + " &c, std::string_view name) {\n";
-    code += "auto& typeinfos = typeInfo<" + name.str() + ">();\n";
+    code += "ReflectVar reflect<" + name + ">(" + name + " &c, std::string_view name) {\n";
+    code += "auto& typeinfos = typeInfo<" + name + ">();\n";
     code += "auto it = typeinfos.find(name);\n";
     code += "if (it != typeinfos.end()){\n";
     code += "return ReflectVar{&c, it->second};\n";
@@ -75,6 +80,55 @@ auto codegen(const CXXRecordDecl *decl) {
     code += "//dynamic reflect--------------------------------\n";
     return code;
     
+}
+
+// int traverseParents(const DynTypedNodeList &Parents) {
+//     for (const auto &Parent : Parents) {
+//         llvm::outs() << "Parent: " << Parent.getNodeKind().asStringRef() << " ";
+//         switch (Parent.get<Decl>()->getKind()) {
+//             case Decl::Kind::CXXRecord:
+//                 llvm::outs() << llvm::dyn_cast<CXXRecordDecl>(Parent.get<Decl>())->getQualifiedNameAsString() << "\n";
+//                 break;
+//             case Decl::Kind::Namespace:
+//                 llvm::outs() << llvm::dyn_cast<NamespaceDecl>(Parent.get<Decl>())->getQualifiedNameAsString() << "\n";
+//                 break;
+//             case Decl::Kind::TranslationUnit:
+//                 llvm::outs() << "TranslationUnit\n";
+//                 break;
+//             default:
+//                 llvm::outs() << "Unknown\n";
+//                 break;
+//         }
+        
+//         const auto &Parents = Parent.get<Decl>()->getASTContext().getParents(*Parent.get<Decl>());
+//         if (Parents.empty()) {
+//             return 0;
+//         }
+//         traverseParents(Parents);
+//     }
+//     return 0;
+// }
+
+SourceLocation findParentEndloc(const Decl *decl) {
+    const auto &Parents = decl->getASTContext().getParents(*decl);
+    for (const auto &Parent : Parents) {
+        switch (Parent.get<Decl>()->getKind()) {
+            case Decl::Kind::CXXRecord:
+                llvm::outs() << llvm::dyn_cast<CXXRecordDecl>(Parent.get<Decl>())->getQualifiedNameAsString() << "\n";
+                return findParentEndloc(Parent.get<Decl>());
+            case Decl::Kind::Namespace:
+                llvm::outs() << llvm::dyn_cast<NamespaceDecl>(Parent.get<Decl>())->getQualifiedNameAsString() << "\n";
+
+                return findParentEndloc(Parent.get<Decl>());
+            case Decl::Kind::TranslationUnit:
+                llvm::outs() << "TranslationUnit\n";
+                return decl->getEndLoc();
+            default:
+                llvm::outs() << "Unknown\n";
+                break;
+        }
+    }
+    return SourceLocation();
 }
 
 
@@ -90,15 +144,21 @@ public:
                     if (annotateAttr->getAnnotation() == "reflect") {
                         llvm::outs() << "--------------------------------\n";
                         llvm::outs() << "Found reflect class\n";
-                        SourceLocation endLoc = decl->getEndLoc();
+                        llvm::outs() << "Name: " << decl->getQualifiedNameAsString() << "\n";
+                        
+
+
+
+                        SourceLocation endLoc = findParentEndloc(decl);
                         if (endLoc.isValid()) {
+                            // it it also error, but now i dont care
                             while (*TheRewriter.getSourceMgr().getCharacterData(endLoc) != ';') {
                                 endLoc = endLoc.getLocWithOffset(1);
                             }
                             endLoc = endLoc.getLocWithOffset(1);
                             std::string code = codegen(decl);
                             TheRewriter.InsertTextAfter(endLoc, code);
-                            llvm::outs() << "Codegen: " << code << "\n";
+                            // llvm::outs() << "Codegen: " << code << "\n";
                         }
                         llvm::outs() << "--------------------------------\n";
                     }

@@ -5,12 +5,17 @@ struct __attribute__((annotate("reflect"))) test{
     int testname;
     int testname2;
     double testname3;
-    struct test2{
+    struct __attribute__((annotate("reflect"))) test2{
         int testname;
+        struct __attribute__((annotate("reflect"))) test3{
+            int testname;
+        };
     };
     test2 testname4;
 
 };
+
+
 
 test temp = {1,2};
 int main(){
