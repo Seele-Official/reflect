@@ -11,31 +11,31 @@ using namespace clang;
 char **ARGV;
 
 
+struct fieldinfo {
+    std::string name;
+    std::string qualifiedName;
+};
 
 auto codegen(const CXXRecordDecl *decl) {
+
+    auto name = decl->getName();
+
+    auto fieldinfos = std::vector<fieldinfo>();
+
+    for (const auto *field : decl->fields()) {
+        fieldinfos.push_back({field->getName().str(), field->getQualifiedNameAsString()});
+    }
+    std::string size = std::to_string(fieldinfos.size());
+
+
+
     std::string code;
     code += "\n//static reflect--------------------------------\n";
     code += "template<>\n";
-    code += "constexpr staticReflectVar staticReflect<" + decl->getName().str() + ">(" + decl->getName().str() + " &c, std::string_view name) {\n";
-    code += "constexpr auto keynames = std::array<map, ";
-    size_t i = 0;
-    for (const auto *field : decl->fields())
-        i++;
-    std::string size = std::to_string(i);
-    code += size;
-    code += ">{\n";
-
-
-    for (const auto *field : decl->fields()) {
-        code += "map{\"";
-        code += field->getName().str();
-        code += "\", offsetof(";
-        code += decl->getName().str();
-        code += ", ";
-        code += field->getName().str();
-        code += "), sizeof(";
-        code += field->getQualifiedNameAsString();
-        code += ")},\n";
+    code += "constexpr staticReflectVar staticReflect<" + name.str() + ">(" + name.str() + " &c, std::string_view name) {\n";
+    code += "constexpr auto keynames = std::array<map, " + size + ">{\n";
+    for (const auto &fieldinfo : fieldinfos) {
+        code += "map{\""+ fieldinfo.name + "\", offsetof(" + name.str() + ", " + fieldinfo.name + "), sizeof(" + fieldinfo.qualifiedName + ")},\n";
     }
     code += "};\n";
     code += "for (const auto& keyname : keynames){\n";
@@ -45,8 +45,34 @@ auto codegen(const CXXRecordDecl *decl) {
     code += "}\n";
     code += "return staticReflectVar{};\n";
     code += "}\n";
-
     code += "//static reflect--------------------------------\n";
+    code += "\n\n";
+
+
+
+    code += "//dynamic reflect--------------------------------\n";
+    code += "template <>\n";
+    code += "auto& typeInfo<" + name.str() + ">() {\n";
+    code += "const static std::unordered_map<std::string_view, typeinfo> typeinfos = {\n";
+    for (const auto &fieldinfo : fieldinfos) {
+        code += "{\"" + fieldinfo.name + "\", {offsetof(" + name.str() + ", " + fieldinfo.name + "), sizeof(" + fieldinfo.qualifiedName + "), std::type_index(typeid(" + fieldinfo.qualifiedName + "))}},\n";
+    }
+    code += "};\n";
+    code += "return typeinfos;\n";
+    code += "}\n";
+
+
+
+    code += "template <>\n";
+    code += "ReflectVar reflect<" + name.str() + ">(" + name.str() + " &c, std::string_view name) {\n";
+    code += "auto& typeinfos = typeInfo<" + name.str() + ">();\n";
+    code += "auto it = typeinfos.find(name);\n";
+    code += "if (it != typeinfos.end()){\n";
+    code += "return ReflectVar{&c, it->second};\n";
+    code += "}\n";
+    code += "return ReflectVar{};\n";
+    code += "}\n";
+    code += "//dynamic reflect--------------------------------\n";
     return code;
     
 }

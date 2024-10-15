@@ -33,6 +33,7 @@ class staticReflectVar {
 
     template <typename T>
     auto operator=(const T &value) const {
+        
         if (size > sizeof(T)) {
             // error
         }
@@ -72,7 +73,7 @@ class ReflectVar{
 
     template <typename T>
     auto operator=(const T &value) {
-        if (static_cast<std::type_index>(typeid(T)) != info.typeindex) {
+        if (std::type_index(typeid(T)) != info.typeindex) {
             // error
         }
         memcpy(static_cast<char *>(classBase) + info.offset, &value, info.size);
@@ -87,7 +88,7 @@ class ReflectVar{
 
     template<typename T>
     auto getValue() const {
-        if (static_cast<std::type_index>(typeid(T)) != info.typeindex) {
+        if (std::type_index(typeid(T)) != info.typeindex) {
             // error
         }
         T value;
