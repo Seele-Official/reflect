@@ -1,12 +1,13 @@
-
+#ifndef REFLECT
 #define REFLECT
-#ifdef REFLECT
-
 #include <cstddef>
 #include <string_view>
 #include <cstring>
 #include <typeindex>
 #include <unordered_map>
+
+namespace Reflect {
+    
 
 struct typeinfo{
     size_t offset;
@@ -47,6 +48,11 @@ class staticReflectVar {
         T value;
         memcpy(&value, static_cast<char *>(classBase) + offset, sizeof(T));
         return value;
+    }
+    
+    template<typename T>
+    T& getAs() const {
+        return *reinterpret_cast<T*>(static_cast<char *>(classBase) + offset);
     }
 
     template <typename T>
@@ -95,6 +101,15 @@ class ReflectVar{
         memcpy(&value, static_cast<char *>(classBase) + info.offset, sizeof(T));
         return value;
     }
+
+    template<typename T>
+    T& getAs() const {
+        // if (std::type_index(typeid(T)) != info.typeindex) {
+        //     // error
+        // }
+        return *reinterpret_cast<T*>(static_cast<char *>(classBase) + info.offset);
+    }
+
     auto& getInfo() const {
         return info;
     }
@@ -135,4 +150,12 @@ ReflectVar reflect(T &c, std::string_view name) {
 
 
 
+
+
+
+
+
+
+
+}
 #endif

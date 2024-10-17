@@ -35,6 +35,8 @@ auto codegen(const CXXRecordDecl *decl) {
 
 
     std::string code;
+    code += "\nnamespace Reflect {\n";
+
     code += "\n//static reflect--------------------------------\n";
     code += "template<>\n";
     code += "constexpr staticReflectVar staticReflect<" + name + ">(" + name + " &c, std::string_view name) {\n";
@@ -78,57 +80,45 @@ auto codegen(const CXXRecordDecl *decl) {
     code += "return ReflectVar{};\n";
     code += "}\n";
     code += "//dynamic reflect--------------------------------\n";
+    code += "}\n";
     return code;
     
 }
 
-// int traverseParents(const DynTypedNodeList &Parents) {
-//     for (const auto &Parent : Parents) {
-//         llvm::outs() << "Parent: " << Parent.getNodeKind().asStringRef() << " ";
-//         switch (Parent.get<Decl>()->getKind()) {
-//             case Decl::Kind::CXXRecord:
-//                 llvm::outs() << llvm::dyn_cast<CXXRecordDecl>(Parent.get<Decl>())->getQualifiedNameAsString() << "\n";
-//                 break;
-//             case Decl::Kind::Namespace:
-//                 llvm::outs() << llvm::dyn_cast<NamespaceDecl>(Parent.get<Decl>())->getQualifiedNameAsString() << "\n";
-//                 break;
-//             case Decl::Kind::TranslationUnit:
-//                 llvm::outs() << "TranslationUnit\n";
-//                 break;
-//             default:
-//                 llvm::outs() << "Unknown\n";
-//                 break;
-//         }
-        
-//         const auto &Parents = Parent.get<Decl>()->getASTContext().getParents(*Parent.get<Decl>());
-//         if (Parents.empty()) {
-//             return 0;
-//         }
-//         traverseParents(Parents);
-//     }
-//     return 0;
-// }
 
-SourceLocation findParentEndloc(const Decl *decl) {
+SourceLocation findParentEndloc(const Decl *decl, const Rewriter &R) {
     const auto &Parents = decl->getASTContext().getParents(*decl);
     for (const auto &Parent : Parents) {
+        SourceLocation endLoc = decl->getEndLoc();
         switch (Parent.get<Decl>()->getKind()) {
             case Decl::Kind::CXXRecord:
                 llvm::outs() << llvm::dyn_cast<CXXRecordDecl>(Parent.get<Decl>())->getQualifiedNameAsString() << "\n";
-                return findParentEndloc(Parent.get<Decl>());
+                return findParentEndloc(Parent.get<Decl>(), R);
             case Decl::Kind::Namespace:
                 llvm::outs() << llvm::dyn_cast<NamespaceDecl>(Parent.get<Decl>())->getQualifiedNameAsString() << "\n";
-
-                return findParentEndloc(Parent.get<Decl>());
+                return findParentEndloc(Parent.get<Decl>(), R);
             case Decl::Kind::TranslationUnit:
                 llvm::outs() << "TranslationUnit\n";
-                return decl->getEndLoc();
+                switch (decl->getKind()){
+                    case Decl::Kind::CXXRecord:
+                        while (endLoc.isValid() && *R.getSourceMgr().getCharacterData(endLoc) != ';') {
+                            endLoc = endLoc.getLocWithOffset(1);
+                        }
+                        return endLoc.getLocWithOffset(1);
+                    case Decl::Kind::Namespace:
+                        while (endLoc.isValid() && *R.getSourceMgr().getCharacterData(endLoc) != '}') {
+                            endLoc = endLoc.getLocWithOffset(1);
+                        }
+                        return endLoc.getLocWithOffset(1);
+                    default:
+                        return SourceLocation{};
+                }
             default:
                 llvm::outs() << "Unknown\n";
                 break;
         }
     }
-    return SourceLocation();
+    return SourceLocation{};
 }
 
 
@@ -146,16 +136,9 @@ public:
                         llvm::outs() << "Found reflect class\n";
                         llvm::outs() << "Name: " << decl->getQualifiedNameAsString() << "\n";
                         
-
-
-
-                        SourceLocation endLoc = findParentEndloc(decl);
+                        SourceLocation endLoc = findParentEndloc(decl, TheRewriter);    
                         if (endLoc.isValid()) {
-                            // it it also error, but now i dont care
-                            while (*TheRewriter.getSourceMgr().getCharacterData(endLoc) != ';') {
-                                endLoc = endLoc.getLocWithOffset(1);
-                            }
-                            endLoc = endLoc.getLocWithOffset(1);
+
                             std::string code = codegen(decl);
                             TheRewriter.InsertTextAfter(endLoc, code);
                             // llvm::outs() << "Codegen: " << code << "\n";

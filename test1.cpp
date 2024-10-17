@@ -1,25 +1,21 @@
 #include "reflect.hpp"
 #include <iostream>
-namespace testnamespace {
-    struct __attribute__((annotate("reflect"))) test{
-        public:
+
+struct __attribute__((annotate("reflect"))) test{
+    public:
+    int testname;
+    int testname2;
+    double testname3;
+    struct __attribute__((annotate("reflect"))) test2{
         int testname;
-        int testname2;
-        double testname3;
-        struct __attribute__((annotate("reflect"))) test2{
+        struct __attribute__((annotate("reflect"))) test3{
             int testname;
-            struct __attribute__((annotate("reflect"))) test3{
-                int testname;
-            };
         };
-        test2 testname4;
-
     };
-}
+    test2 testname4;
 
+};
 
-
-using namespace testnamespace;
 test temp = {1,2};
 int main(){
     using namespace Reflect;
